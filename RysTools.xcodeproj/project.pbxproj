@@ -53,20 +53,6 @@
 		};
 /* End PBXContainerItemProxy section */
 
-/* Begin PBXCopyFilesBuildPhase section */
-		E44335E1E077763906C4B5C3 /* Embed Foundation Extensions */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
-			files = (
-				BF27F1F5CA6283F7FD039C28 /* CalendarWidgetExtension.appex in Embed Foundation Extensions */,
-			);
-			name = "Embed Foundation Extensions";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
-
 /* Begin PBXFileReference section */
 		001CD57C78AC8DF0FC9468A5 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		07E373E7B9BEE0668FE570C2 /* JSONHelpers.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = JSONHelpers.swift; sourceTree = "<group>"; };
@@ -270,12 +256,10 @@
 				C298707772D795D1B2D4713E /* Sources */,
 				3CDA8F13B1FC4B52B448B1F2 /* Frameworks */,
 				67174F5C2E265333DFBF786F /* Resources */,
-				E44335E1E077763906C4B5C3 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				74D00E21F96E02E25655B61A /* PBXTargetDependency */,
 			);
 			name = RysTools;
 			productName = RysTools;
@@ -380,15 +364,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin PBXTargetDependency section */
-		74D00E21F96E02E25655B61A /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			name = CalendarWidgetExtension;
-			target = 3245A69DC25F64730FF373C1 /* CalendarWidgetExtension */;
-			targetProxy = 1C59D52599885373995F8382 /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		45D5128F44188525425BDCFD /* Debug */ = {

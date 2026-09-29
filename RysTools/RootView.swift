@@ -31,7 +31,6 @@ struct RootView: View {
     @State private var calendarSearchText = ""
     @State private var selectedFolder: MailFolder = .inbox
     @State private var isNavMenuOpen = false
-    @State private var isSearchExpanded = false
     @FocusState private var isSearchFieldFocused: Bool
     @State private var composePrefill: ComposePrefill?
     // Flipped true by the header's "+" button (see headerBar) when on Calendar, then
@@ -46,17 +45,30 @@ struct RootView: View {
     // The header floats over the content instead of sitting in its own row (it has its
     // own opaque background — see headerBar — so scrolled content disappears behind
     // it rather than showing through), but at rest, content should start right below
-    // the header, not under it. Now that the header is just one row, shown identically
-    // regardless of selectedTool or sign-in state (search/compose are the only parts
-    // that ever come and go, and neither changes the row's own height), this is a
-    // single fixed constant instead of a per-state calculation.
-    private let headerHeight: CGFloat = 64
+    // the header, not under it. Now that the header is just the nav trigger, shown
+    // identically regardless of selectedTool or sign-in state, this is a single fixed
+    // constant instead of a per-state calculation. bottomBar (search + "+") mirrors
+    // the same floats-over-content mechanism at the bottom instead, hidden entirely
+    // for Note (see body/bottomBar).
+    //
+    // static (not private) because EmailView's own List needs the same number: its
+    // NavigationStack (for the push-to-detail screen) doesn't reliably inherit this
+    // safeAreaInset from here once its own navigation bar is hidden, which was
+    // letting the top row scroll up partly behind the header — see EmailView's own
+    // explicit top inset that reuses this exact value.
+    static let headerHeight: CGFloat = 64
+    private let bottomBarHeight: CGFloat = 64
 
     var body: some View {
         ZStack(alignment: .top) {
             content
                 .safeAreaInset(edge: .top, spacing: 0) {
-                    Color.clear.frame(height: headerHeight)
+                    Color.clear.frame(height: Self.headerHeight)
+                }
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if selectedTool != .scratch {
+                        Color.clear.frame(height: bottomBarHeight)
+                    }
                 }
                 // Lets a swipe anywhere in the content area switch tools too, not just
                 // on the header title. See BackgroundSwipeDetector for why this is a
@@ -71,6 +83,11 @@ struct RootView: View {
                 ))
             headerBar
         }
+        .overlay(alignment: .bottom) {
+            if selectedTool != .scratch {
+                bottomBar
+            }
+        }
         .background(Theme.paper)
         // The CalendarWidgetExtension deep-links here (rystools://calendar) to jump
         // straight to Calendar instead of whatever tab happened to be open.
@@ -79,11 +96,10 @@ struct RootView: View {
             selectedTool = tool
             router.pendingTool = nil
         }
-        // An expanded search field showing a DIFFERENT tool's text after switching
-        // via the nav menu would be confusing — each tool's own search text is still
-        // preserved for next time, just not left visibly expanded.
+        // The search field staying focused (and the keyboard up) after switching to
+        // a different tool via the nav menu would be confusing — each tool's own
+        // search text is still preserved for next time, just not left focused.
         .onChange(of: selectedTool) {
-            isSearchExpanded = false
             isSearchFieldFocused = false
         }
         .sheet(item: $composePrefill) { prefill in
@@ -99,7 +115,7 @@ struct RootView: View {
                         .ignoresSafeArea()
                         .onTapGesture { isNavMenuOpen = false }
                     navMenuPanel
-                        .padding(.top, headerHeight + 8)
+                        .padding(.top, Self.headerHeight + 8)
                 }
             }
         }
@@ -136,78 +152,14 @@ struct RootView: View {
         }
     }
 
-    // One row, shown identically for every tool — the nav menu trigger always sits
-    // centered; search (Email/Calendar only, expands in place of the row) and the
-    // "+" button (Email, signed in; Calendar always; Note never) are the only parts
-    // that ever come or go on either side of it, so the trigger never actually
-    // moves when switching tools.
+    // Just the nav menu trigger, centered — search and the "+" button used to live
+    // here too, but now live in bottomBar instead (see body/bottomBar), pinned to
+    // the bottom of the screen.
     private var headerBar: some View {
-        HStack(spacing: 10) {
-            if isSearchExpanded {
-                searchField
-                Button("Cancel") {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isSearchExpanded = false
-                        isSearchFieldFocused = false
-                        currentSearchText.wrappedValue = ""
-                    }
-                }
-                .font(Theme.Font.subheadline.weight(.semibold))
-                .foregroundStyle(.white)
-            } else {
-                // Just the icon by default — tapping expands it into the full search
-                // field, in place of the rest of this row. Note has no search of its
-                // own (see currentSearchText/searchPlaceholder), so this is hidden
-                // entirely there rather than expanding into a field that does nothing.
-                if selectedTool != .scratch {
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            isSearchExpanded = true
-                            isSearchFieldFocused = true
-                        }
-                    } label: {
-                        Image(systemName: "magnifyingglass")
-                            .font(Theme.Font.subheadline.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .padding(8)
-                            .background(Theme.darkGrey)
-                            .clipShape(Circle())
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                Spacer(minLength: 0)
-                navMenuTrigger
-                Spacer(minLength: 0)
-
-                // One "+" button, in the same spot for every tool that has one —
-                // Email's Compose and Calendar's Create Event used to each be their
-                // own button (in their own content, below the header); now they're
-                // one button here that does whichever one applies to the current
-                // tool. Email's still hides when signed out (there's nothing to
-                // compose to). Note has no "+" at all — there's only ever the one
-                // note, nothing to add.
-                if selectedTool == .calendar || (selectedTool == .email && auth.isSignedIn) {
-                    Button {
-                        switch selectedTool {
-                        case .email:
-                            composePrefill = ComposePrefill(to: "", subject: "", body: "", threadId: nil)
-                        case .calendar:
-                            triggerCalendarCreate = true
-                        case .scratch:
-                            break
-                        }
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(Theme.Font.subheadline.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .padding(8)
-                            .background(Theme.green)
-                            .clipShape(Circle())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
+        HStack {
+            Spacer(minLength: 0)
+            navMenuTrigger
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -226,10 +178,47 @@ struct RootView: View {
         }
     }
 
+    // Pinned to the bottom of the screen — a persistent search bar (not a
+    // tap-to-expand icon any more) plus the "+" button, in the same spot for every
+    // tool that has one. Email's "+" still hides when signed out (there's nothing to
+    // compose to); Calendar's always shows. Hidden entirely for Note (see body),
+    // which has neither search nor anything to add.
+    private var bottomBar: some View {
+        HStack(spacing: 10) {
+            searchField
+
+            if selectedTool == .calendar || (selectedTool == .email && auth.isSignedIn) {
+                Button {
+                    switch selectedTool {
+                    case .email:
+                        composePrefill = ComposePrefill(to: "", subject: "", body: "", threadId: nil)
+                    case .calendar:
+                        triggerCalendarCreate = true
+                    case .scratch:
+                        break
+                    }
+                } label: {
+                    // Mail's own traditional compose glyph for Email; Calendar keeps
+                    // the plain "+" (creating an event isn't really "composing").
+                    Image(systemName: selectedTool == .email ? "square.and.pencil" : "plus")
+                        .font(Theme.Font.title2.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(16)
+                        .background(Color.black)
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(Theme.paper)
+    }
+
     private var searchField: some View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass")
-                .font(Theme.Font.caption)
+                .font(Theme.Font.subheadline)
                 .foregroundStyle(.white)
             TextField(searchPlaceholder, text: currentSearchText)
                 .font(Theme.Font.subheadline)
@@ -242,13 +231,18 @@ struct RootView: View {
                     currentSearchText.wrappedValue = ""
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(Theme.Font.caption)
+                        .font(Theme.Font.subheadline)
                         .foregroundStyle(.white)
                 }
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 12)
+        // Thicker than a typical toolbar search field — matching iMessage's own
+        // chunkier search bar look rather than the slimmer capsule this had before.
+        // Shorter now too: the bigger compose button next to it (see bottomBar)
+        // already eats into its width, so this doesn't need maxWidth: .infinity
+        // fighting for every remaining pixel.
+        .padding(.vertical, 15)
         .frame(maxWidth: .infinity)
         .background(Theme.darkGrey)
         .clipShape(Capsule())

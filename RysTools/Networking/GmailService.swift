@@ -1,6 +1,6 @@
 import Foundation
 
-struct EmailMessage: Identifiable {
+struct EmailMessage: Identifiable, Hashable {
     let id: String
     let threadId: String
     // The sender's email address (not display name) of the FIRST message in the

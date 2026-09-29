@@ -15,6 +15,15 @@ private extension VerticalAlignment {
     static let subjectLine = VerticalAlignment(SubjectLineAlignment.self)
 }
 
+// Shared by EmailView (the list) and EmailDetailView (the pushed screen) — pulls just
+// the bare, lowercased address out of a "Name <addr@example.com>" header.
+private func extractEmailAddress(_ raw: String) -> String {
+    if let ltIndex = raw.firstIndex(of: "<"), let gtIndex = raw.firstIndex(of: ">"), ltIndex < gtIndex {
+        return String(raw[raw.index(after: ltIndex)..<gtIndex]).trimmingCharacters(in: .whitespaces).lowercased()
+    }
+    return raw.trimmingCharacters(in: .whitespaces).lowercased()
+}
+
 @MainActor
 final class EmailViewModel: ObservableObject {
     @Published var messages: [EmailMessage] = []
@@ -41,45 +50,17 @@ final class EmailViewModel: ObservableObject {
     }
 }
 
-// The open inline reply composer's target — which conversation it's replying to and
-// what it'll send with. See EmailView.replyArea/inlineReplyComposer.
-private struct InlineReplyDraft {
-    var replyTo: String
-    var subject: String
-    var threadId: String
-}
-
 // Uses a List (not a plain ScrollView) specifically so .swipeActions works — matching
 // the web app's swipe-left-to-archive / swipe-right-to-mark-read gesture. Tapping a
-// row expands it in place, in the SAME row/card, instead of pushing a new screen —
-// same "tap again, or tap a different row, to collapse" behavior as the web app's
-// inline accordion (only one open at a time).
+// row now pushes a dedicated screen (see EmailDetailView) that slides in from the
+// right, like Mail.app, instead of expanding inline in the row itself.
 struct EmailView: View {
     @EnvironmentObject var auth: GoogleAuthService
     @EnvironmentObject var appSettings: AppSettings
     @Environment(\.openURL) private var openURL
     @StateObject private var viewModel = EmailViewModel()
-    @State private var expandedID: String?
-    // Always an array now, even for a single message — every email renders as a
-    // conversation (chat bubbles), so there's no separate single-message layout.
-    @State private var expandedThread: [EmailDetail]?
-    @State private var expandedBodies: [String: AttributedString] = [:]
-    @State private var isLoadingDetail = false
-    @State private var detailError: String?
     @State private var searchTask: Task<Void, Never>?
-    @State private var composePrefill: ComposePrefill?
-    @State private var quickLookURL: URL?
-    @State private var downloadingAttachmentID: String?
-    @State private var attachmentErrorMessage: String?
-    // Reply is inline (see inlineReplyComposer) instead of the ComposeMailView sheet —
-    // it opens right under the thread's chat bubbles, like typing the next message in a
-    // conversation, rather than a separate To/Subject/Body screen (Forward still uses
-    // the sheet, since it genuinely goes to someone new).
-    @State private var inlineReply: InlineReplyDraft?
-    @State private var replyText = ""
-    @State private var isSendingReply = false
-    @State private var replyError: String?
-    @FocusState private var replyFieldFocused: Bool
+    @State private var selectedMessage: EmailMessage?
     @Binding var searchText: String
     @Binding var folder: MailFolder
     // Prefers a sender's Google contact name (matching what Gmail itself shows) over
@@ -90,55 +71,72 @@ struct EmailView: View {
     private var service: GmailService { GmailService(auth: auth) }
 
     var body: some View {
-        List {
-            if viewModel.isLoading {
-                ProgressView()
-                    .padding(.top, 40)
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-            } else if let error = viewModel.errorMessage {
-                Text(error)
-                    .foregroundStyle(Theme.inkSoft)
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-            } else if viewModel.messages.isEmpty {
-                Text(viewModel.emptyStateText)
-                    .foregroundStyle(Theme.inkSoft)
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-            } else {
-                ForEach(viewModel.messages) { message in
-                    emailRow(message)
-                        // Reports this row's frame to BackgroundSwipeDetector, so a
-                        // swipe here reveals archive/mark-read instead of switching tools.
-                        .swipeableCard()
-                        .listRowInsets(EdgeInsets())
+        NavigationStack {
+            List {
+                if viewModel.isLoading {
+                    ProgressView()
+                        .padding(.top, 40)
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
-                        // Native swipeActions instead of a hand-built drag gesture —
-                        // simpler and guaranteed not to fight the List's own scrolling.
-                        .swipeActions(edge: .trailing) {
-                            Button {
-                                Task { await archive(message) }
-                            } label: {
-                                swipeActionLabel(message.isArchived ? "Unarchive" : "Archive", color: LightBoxTheme.expense)
+                } else if let error = viewModel.errorMessage {
+                    Text(error)
+                        .foregroundStyle(Theme.inkSoft)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                } else if viewModel.messages.isEmpty {
+                    Text(viewModel.emptyStateText)
+                        .foregroundStyle(Theme.inkSoft)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                } else {
+                    ForEach(viewModel.messages) { message in
+                        emailRow(message)
+                            // Reports this row's frame to BackgroundSwipeDetector, so a
+                            // swipe here reveals archive/mark-read instead of switching tools.
+                            .swipeableCard()
+                            .listRowInsets(EdgeInsets())
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            // Native swipeActions instead of a hand-built drag gesture —
+                            // simpler and guaranteed not to fight the List's own scrolling.
+                            .swipeActions(edge: .trailing) {
+                                Button {
+                                    Task { await archive(message) }
+                                } label: {
+                                    swipeActionLabel(message.isArchived ? "Unarchive" : "Archive", color: LightBoxTheme.expense)
+                                }
+                                .tint(Theme.paper)
                             }
-                            .tint(Theme.paper)
-                        }
-                        .swipeActions(edge: .leading) {
-                            Button {
-                                Task { await toggleRead(message) }
-                            } label: {
-                                swipeActionLabel(message.isUnread ? "Mark read" : "Mark unread", color: LightBoxTheme.info)
+                            .swipeActions(edge: .leading) {
+                                Button {
+                                    Task { await toggleRead(message) }
+                                } label: {
+                                    swipeActionLabel(message.isUnread ? "Mark read" : "Mark unread", color: LightBoxTheme.info)
+                                }
+                                .tint(Theme.paper)
                             }
-                            .tint(Theme.paper)
-                        }
+                    }
                 }
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(Theme.paper)
+            // RootView reserves this same height above its content via its own
+            // safeAreaInset so its floating header has somewhere to sit — but once
+            // this List is wrapped in a NavigationStack with its navigation bar
+            // hidden (see .toolbar below, needed for the push-to-detail screen),
+            // that ancestor inset stops reliably reaching down into the List, and
+            // the top row ends up scrolling up partly behind the header. Reserving
+            // the exact same height again here, from the inside, fixes that
+            // regardless of whatever the NavigationStack does with the outer one.
+            .safeAreaInset(edge: .top, spacing: 0) {
+                Color.clear.frame(height: RootView.headerHeight)
+            }
+            .navigationDestination(item: $selectedMessage) { message in
+                EmailDetailView(message: message)
+            }
+            .toolbar(.hidden, for: .navigationBar)
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .background(Theme.paper)
         .task { await reload() }
         .task { await contacts.loadIfNeeded(auth: auth) }
         .refreshable { await reload() }
@@ -154,18 +152,6 @@ struct EmailView: View {
                 guard !Task.isCancelled else { return }
                 await reload()
             }
-        }
-        .sheet(item: $composePrefill) { prefill in
-            ComposeMailView(prefill: prefill, service: service)
-        }
-        .quickLookPreview($quickLookURL)
-        .alert("Couldn't open attachment", isPresented: Binding(
-            get: { attachmentErrorMessage != nil },
-            set: { if !$0 { attachmentErrorMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) { attachmentErrorMessage = nil }
-        } message: {
-            Text(attachmentErrorMessage ?? "")
         }
     }
 
@@ -196,13 +182,11 @@ struct EmailView: View {
     }
 
     private func emailRow(_ message: EmailMessage) -> some View {
-        let isExpanded = expandedID == message.id
-
         // The dot sits outside the card entirely, in the blank margin to its left —
-        // .subjectLine is a shared custom alignment guide (see below) so its vertical
+        // .subjectLine is a shared custom alignment guide (see above) so its vertical
         // center lines up exactly with the subject text's center, regardless of font
         // metrics, without needing to hand-measure line heights.
-        return HStack(alignment: .subjectLine, spacing: 6) {
+        HStack(alignment: .subjectLine, spacing: 6) {
             Circle()
                 .fill(message.isUnread ? LightBoxTheme.expense : Color.clear)
                 .frame(width: 8, height: 8)
@@ -211,7 +195,7 @@ struct EmailView: View {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .top, spacing: 8) {
                     Button {
-                        toggleExpanded(message)
+                        selectedMessage = message
                     } label: {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(senderDisplayName(for: message))
@@ -255,10 +239,6 @@ struct EmailView: View {
                         }
                     }
                 }
-
-                if isExpanded {
-                    expandedContent
-                }
             }
             .padding(12)
             .background(LightBoxTheme.paper)
@@ -269,15 +249,218 @@ struct EmailView: View {
         .padding(.vertical, 5)
     }
 
-    @ViewBuilder
-    private var expandedContent: some View {
-        if isLoadingDetail {
-            ProgressView().padding(.vertical, 16)
-        } else if let detailError {
-            Text(detailError).foregroundStyle(LightBoxTheme.ink).padding(.top, 10)
-        } else if let thread = expandedThread {
-            threadContent(thread)
+    // Toggles whichever direction applies — Archive for an inbox message, Unarchive
+    // (back into the inbox) for one that's already archived (only possible from search
+    // results, which cover the whole mailbox). Either way it's removed from the
+    // currently-shown list, matching email.html's toggleArchiveMessage.
+    private func archive(_ message: EmailMessage) async {
+        do {
+            // A collapsed row can represent more than one message still in the inbox
+            // (the whole thread) — archiving just the row's own (most recent) message
+            // would leave the older ones in INBOX, and the thread would just reappear
+            // on the next reload via one of those. Act on every message it stands for.
+            for id in message.threadMessageIDs {
+                try await service.setArchived(id: id, archived: !message.isArchived)
+            }
+            viewModel.messages.removeAll { $0.id == message.id }
+            if message.isUnread { await BadgeUpdater.refresh(auth: auth) }
+        } catch {
+            viewModel.errorMessage = error.localizedDescription
         }
+    }
+
+    private func toggleRead(_ message: EmailMessage) async {
+        do {
+            for id in message.threadMessageIDs {
+                try await service.markRead(id: id, unread: !message.isUnread)
+            }
+            if let idx = viewModel.messages.firstIndex(where: { $0.id == message.id }) {
+                viewModel.messages[idx].isUnread.toggle()
+            }
+            await BadgeUpdater.refresh(auth: auth)
+        } catch {
+            viewModel.errorMessage = error.localizedDescription
+        }
+    }
+}
+
+// The open inline reply composer's target — which conversation it's replying to and
+// what it'll send with. See EmailDetailView.replyArea/inlineReplyComposer. Equatable
+// so .onChange(of: inlineReply) can fire the auto-scroll-to-composer behavior.
+private struct InlineReplyDraft: Equatable {
+    var replyTo: String
+    var subject: String
+    var threadId: String
+}
+
+// The pushed, full-screen email view — slides in from the right (standard
+// NavigationStack push) instead of the old inline-in-the-list expansion. Keeps the
+// exact same chat-bubble thread format as before, just hosted in its own screen with
+// a back button instead of inside the row it was tapped from. NavigationStack's own
+// nav bar is hidden (RootView already floats its own header — search/tool
+// dropdown/"+" — above everything, so a second bar here would just double up), and
+// this view supplies its own minimal back row instead.
+struct EmailDetailView: View {
+    @EnvironmentObject var auth: GoogleAuthService
+    @Environment(\.dismiss) private var dismiss
+    let message: EmailMessage
+
+    @State private var thread: [EmailDetail]?
+    @State private var bodies: [String: AttributedString] = [:]
+    @State private var isLoading = true
+    @State private var errorMessage: String?
+    @State private var inlineReply: InlineReplyDraft?
+    @State private var replyText = ""
+    @State private var isSendingReply = false
+    @State private var replyError: String?
+    @FocusState private var replyFieldFocused: Bool
+    @State private var composePrefill: ComposePrefill?
+    @State private var quickLookURL: URL?
+    @State private var downloadingAttachmentID: String?
+    @State private var attachmentErrorMessage: String?
+
+    private var service: GmailService { GmailService(auth: auth) }
+
+    var body: some View {
+        ScrollViewReader { scrollProxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    if isLoading {
+                        ProgressView().padding(.vertical, 16).frame(maxWidth: .infinity)
+                    } else if let errorMessage {
+                        Text(errorMessage).foregroundStyle(LightBoxTheme.ink).padding(.top, 10)
+                    } else if let thread {
+                        threadContent(thread)
+                    }
+                }
+                .padding(16)
+            }
+            .background(Theme.paper)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                backRow
+            }
+            .task { await load() }
+            // Tapping Reply expands the composer right where these buttons were,
+            // often below the fold on a long thread — scroll it into view instead of
+            // leaving the user to find it themselves. A short delay so the composer
+            // has actually appeared and laid out before scrollTo measures it; Forward
+            // doesn't need this since it opens ComposeMailView as its own full sheet.
+            .onChange(of: inlineReply) { _, newValue in
+                guard newValue != nil else { return }
+                Task {
+                    try? await Task.sleep(nanoseconds: 150_000_000)
+                    withAnimation { scrollProxy.scrollTo("replyArea", anchor: .bottom) }
+                }
+            }
+            .sheet(item: $composePrefill) { prefill in
+                ComposeMailView(prefill: prefill, service: service)
+            }
+            .quickLookPreview($quickLookURL)
+            .alert("Couldn't open attachment", isPresented: Binding(
+                get: { attachmentErrorMessage != nil },
+                set: { if !$0 { attachmentErrorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) { attachmentErrorMessage = nil }
+            } message: {
+                Text(attachmentErrorMessage ?? "")
+            }
+        }
+    }
+
+    private var backRow: some View {
+        HStack(spacing: 4) {
+            Button {
+                dismiss()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "chevron.left")
+                        .font(Theme.Font.subheadline.weight(.semibold))
+                    Text("Back")
+                        .font(Theme.Font.subheadline.weight(.semibold))
+                }
+                .foregroundStyle(.white)
+            }
+            .buttonStyle(.plain)
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(Theme.paper)
+    }
+
+    private func load() async {
+        isLoading = true
+        errorMessage = nil
+        do {
+            // Fetching the whole thread (not just this one message) both covers the
+            // single-message case (a thread of one) and tells us whether this is
+            // actually a back-and-forth conversation that should render as chat
+            // bubbles instead — same as email.html's toggleInlineDetail. Every email
+            // renders as a conversation now, even a lone message, so this always
+            // ends up with a [EmailDetail] of at least one entry, whether that came
+            // from the thread endpoint or (when there's no threadId at all) a single
+            // fetchFull wrapped in an array.
+            var fetched: [EmailDetail] = message.threadId.isEmpty ? [] : try await service.fetchThread(threadId: message.threadId)
+            if fetched.isEmpty {
+                fetched = [try await service.fetchFull(id: message.id)]
+            }
+            var newBodies: [String: AttributedString] = [:]
+            for item in fetched {
+                newBodies[item.id] = await renderedBody(item, stripQuotes: true)
+            }
+            thread = fetched
+            bodies = newBodies
+            isLoading = false
+        } catch {
+            errorMessage = error.localizedDescription
+            isLoading = false
+        }
+    }
+
+    // A back-and-forth thread renders as chat bubbles instead — own messages on the
+    // right, the other side's on the left — same as email.html's buildThreadContent,
+    // instead of repeating the From/To header block once per message.
+    private func threadContent(_ messages: [EmailDetail]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(spacing: 10) {
+                ForEach(messages) { message in
+                    chatBubble(message)
+                }
+            }
+
+            if let target = replyTarget(messages), let last = messages.last {
+                replyArea(
+                    replyTo: target.fromRaw,
+                    subject: messages.first?.subject ?? "",
+                    threadId: target.threadId,
+                    forwardSource: last
+                )
+            }
+        }
+    }
+
+    private func chatBubble(_ message: EmailDetail) -> some View {
+        let mine = isMine(message)
+        return VStack(alignment: mine ? .trailing : .leading, spacing: 4) {
+            Text(mine ? shortDate(message) : "\(shortSenderName(message.from)), \(shortDate(message))")
+                .font(Theme.Font.caption2)
+                .foregroundStyle(LightBoxTheme.gold)
+            Text(bodies[message.id] ?? AttributedString(message.bodyText))
+                .font(Theme.Font.subheadline)
+                .foregroundStyle(LightBoxTheme.ink)
+                .padding(10)
+                .background(mine ? LightBoxTheme.gold : LightBoxTheme.paperLine)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .textSelection(.enabled)
+            if !message.attachments.isEmpty {
+                VStack(alignment: mine ? .trailing : .leading, spacing: 6) {
+                    ForEach(message.attachments) { attachment in
+                        attachmentRow(attachment, messageId: message.id)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: mine ? .trailing : .leading)
     }
 
     private func attachmentRow(_ attachment: EmailAttachment, messageId: String) -> some View {
@@ -319,7 +502,7 @@ struct EmailView: View {
     // Downloads the attachment's bytes (a separate call — the message payload only
     // ever carries its metadata), saves it to a temp file under its real filename so
     // QuickLook can infer the right file type, then hands that off to the .quickLookPreview
-    // modifier attached to the List above.
+    // modifier attached above.
     private func openAttachment(_ attachment: EmailAttachment, messageId: String) async {
         downloadingAttachmentID = attachment.id
         defer { downloadingAttachmentID = nil }
@@ -331,53 +514,6 @@ struct EmailView: View {
         } catch {
             attachmentErrorMessage = error.localizedDescription
         }
-    }
-
-    // A back-and-forth thread renders as chat bubbles instead — own messages on the
-    // right, the other side's on the left — same as email.html's buildThreadContent,
-    // instead of repeating the From/To header block once per message.
-    private func threadContent(_ messages: [EmailDetail]) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(spacing: 10) {
-                ForEach(messages) { message in
-                    chatBubble(message)
-                }
-            }
-
-            if let target = replyTarget(messages), let last = messages.last {
-                replyArea(
-                    replyTo: target.fromRaw,
-                    subject: messages.first?.subject ?? "",
-                    threadId: target.threadId,
-                    forwardSource: last
-                )
-            }
-        }
-        .padding(.top, 10)
-    }
-
-    private func chatBubble(_ message: EmailDetail) -> some View {
-        let mine = isMine(message)
-        return VStack(alignment: mine ? .trailing : .leading, spacing: 4) {
-            Text(mine ? shortDate(message) : "\(shortSenderName(message.from)), \(shortDate(message))")
-                .font(Theme.Font.caption2)
-                .foregroundStyle(LightBoxTheme.gold)
-            Text(expandedBodies[message.id] ?? AttributedString(message.bodyText))
-                .font(Theme.Font.subheadline)
-                .foregroundStyle(LightBoxTheme.ink)
-                .padding(10)
-                .background(mine ? LightBoxTheme.gold : LightBoxTheme.paperLine)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .textSelection(.enabled)
-            if !message.attachments.isEmpty {
-                VStack(alignment: mine ? .trailing : .leading, spacing: 6) {
-                    ForEach(message.attachments) { attachment in
-                        attachmentRow(attachment, messageId: message.id)
-                    }
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: mine ? .trailing : .leading)
     }
 
     // Reply opens inline (inlineReplyComposer) right where these buttons were, instead
@@ -408,8 +544,10 @@ struct EmailView: View {
                         )
                     }
                 }
+                .padding(.top, 2)
             }
         }
+        .id("replyArea")
     }
 
     // A plain text field plus a Send button, styled like the chat bubbles above it —
@@ -470,6 +608,7 @@ struct EmailView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
+        .padding(.top, 2)
     }
 
     // Sends, then re-fetches the thread so the just-sent message shows up as a new
@@ -478,7 +617,6 @@ struct EmailView: View {
     private func sendInlineReply(draft: InlineReplyDraft) async {
         isSendingReply = true
         replyError = nil
-        let openedID = expandedID
         do {
             try await service.sendMessage(
                 to: draft.replyTo,
@@ -486,32 +624,28 @@ struct EmailView: View {
                 body: replyText,
                 threadId: draft.threadId.isEmpty ? nil : draft.threadId
             )
-            guard expandedID == openedID else { return } // collapsed mid-send
             inlineReply = nil
             replyText = ""
             isSendingReply = false
-            await refreshExpandedThread(threadId: draft.threadId, openedID: openedID)
+            await refreshThread(threadId: draft.threadId)
         } catch {
             replyError = error.localizedDescription
             isSendingReply = false
         }
     }
 
-    // Mirrors toggleExpanded's own fetch — re-pulls the thread so the reply that was
-    // just sent shows up as its own new bubble, just like toggleExpanded does the
-    // first time a row is opened.
-    private func refreshExpandedThread(threadId: String, openedID: String?) async {
+    // Mirrors load()'s own fetch — re-pulls the thread so the reply that was just
+    // sent shows up as its own new bubble.
+    private func refreshThread(threadId: String) async {
         guard !threadId.isEmpty else { return }
         do {
             let messages = try await service.fetchThread(threadId: threadId)
-            guard expandedID == openedID else { return }
-            var bodies = expandedBodies
-            for message in messages where bodies[message.id] == nil {
-                bodies[message.id] = await renderedBody(message, stripQuotes: true)
+            var newBodies = bodies
+            for message in messages where newBodies[message.id] == nil {
+                newBodies[message.id] = await renderedBody(message, stripQuotes: true)
             }
-            guard expandedID == openedID else { return }
-            expandedThread = messages
-            expandedBodies = bodies
+            thread = messages
+            bodies = newBodies
         } catch {
             // Non-fatal — the reply still sent successfully; just leave the thread
             // showing its pre-send state rather than surfacing a scary error here.
@@ -561,13 +695,6 @@ struct EmailView: View {
         return extractEmailAddress(message.fromRaw) == myEmail
     }
 
-    private func extractEmailAddress(_ raw: String) -> String {
-        if let ltIndex = raw.firstIndex(of: "<"), let gtIndex = raw.firstIndex(of: ">"), ltIndex < gtIndex {
-            return String(raw[raw.index(after: ltIndex)..<gtIndex]).trimmingCharacters(in: .whitespaces).lowercased()
-        }
-        return raw.trimmingCharacters(in: .whitespaces).lowercased()
-    }
-
     // First word of the display name ("Alex Rivera" -> "Alex") — enough to tell chat
     // bubbles apart in a thread without the full name taking up space.
     private func shortSenderName(_ displayName: String) -> String {
@@ -587,11 +714,9 @@ struct EmailView: View {
         return formatter.string(from: date)
     }
 
-    // stripQuotes cuts the quoted prior-message text a reply carries along with it —
-    // pass true for chat/thread bubbles (each bubble should show only what that
-    // message itself added, not the whole conversation repeated underneath it again),
-    // false for the single-message view where that history is still the point of what's
-    // being read.
+    // stripQuotes cuts the quoted prior-message text a reply carries along with it, so
+    // each chat bubble shows only what that message itself added, not the whole
+    // conversation repeated underneath it again.
     private func renderedBody(_ detail: EmailDetail, stripQuotes: Bool) async -> AttributedString {
         let text = stripQuotes ? Self.stripQuotedContent(detail.bodyText, isHTML: detail.isHTML) : detail.bodyText
         if detail.isHTML {
@@ -637,84 +762,5 @@ struct EmailView: View {
             }
         }
         return text
-    }
-
-    private func toggleExpanded(_ message: EmailMessage) {
-        // Collapsing (or opening a different row) always closes any open reply
-        // composer too, same as switching away from a chat closes its own draft.
-        inlineReply = nil
-        replyText = ""
-        replyError = nil
-        if expandedID == message.id {
-            expandedID = nil
-            expandedThread = nil
-            return
-        }
-        expandedID = message.id
-        expandedThread = nil
-        expandedBodies = [:]
-        detailError = nil
-        isLoadingDetail = true
-        Task {
-            do {
-                // Every email renders as a conversation now, even a lone message — so
-                // this always ends up with a [EmailDetail] of at least one entry,
-                // whether that came from the thread endpoint or (when there's no
-                // threadId at all) a single fetchFull wrapped in an array.
-                var thread: [EmailDetail] = message.threadId.isEmpty ? [] : try await service.fetchThread(threadId: message.threadId)
-                if thread.isEmpty {
-                    thread = [try await service.fetchFull(id: message.id)]
-                }
-                guard expandedID == message.id else { return } // collapsed, or a different row opened, while this was in flight
-
-                var bodies: [String: AttributedString] = [:]
-                for message in thread {
-                    bodies[message.id] = await renderedBody(message, stripQuotes: true)
-                }
-                guard expandedID == message.id else { return }
-                expandedThread = thread
-                expandedBodies = bodies
-                isLoadingDetail = false
-            } catch {
-                guard expandedID == message.id else { return }
-                detailError = error.localizedDescription
-                isLoadingDetail = false
-            }
-        }
-    }
-
-    // Toggles whichever direction applies — Archive for an inbox message, Unarchive
-    // (back into the inbox) for one that's already archived (only possible from search
-    // results, which cover the whole mailbox). Either way it's removed from the
-    // currently-shown list, matching email.html's toggleArchiveMessage.
-    private func archive(_ message: EmailMessage) async {
-        do {
-            // A collapsed row can represent more than one message still in the inbox
-            // (the whole thread) — archiving just the row's own (most recent) message
-            // would leave the older ones in INBOX, and the thread would just reappear
-            // on the next reload via one of those. Act on every message it stands for.
-            for id in message.threadMessageIDs {
-                try await service.setArchived(id: id, archived: !message.isArchived)
-            }
-            viewModel.messages.removeAll { $0.id == message.id }
-            if expandedID == message.id { expandedID = nil }
-            if message.isUnread { await BadgeUpdater.refresh(auth: auth) }
-        } catch {
-            viewModel.errorMessage = error.localizedDescription
-        }
-    }
-
-    private func toggleRead(_ message: EmailMessage) async {
-        do {
-            for id in message.threadMessageIDs {
-                try await service.markRead(id: id, unread: !message.isUnread)
-            }
-            if let idx = viewModel.messages.firstIndex(where: { $0.id == message.id }) {
-                viewModel.messages[idx].isUnread.toggle()
-            }
-            await BadgeUpdater.refresh(auth: auth)
-        } catch {
-            viewModel.errorMessage = error.localizedDescription
-        }
     }
 }
