@@ -1,4 +1,4 @@
-# Ry's Tools — native iOS proof of concept
+# LessMTP — native iOS proof of concept
 
 A native SwiftUI shell around the same Google account data the web tools
 (`budget.html`, `email.html`, `cal.html`, `scratch.html` at rys.tools) already use —

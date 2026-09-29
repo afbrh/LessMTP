@@ -141,7 +141,7 @@ struct CalendarWidgetEntryView: View {
                 Link(destination: URL(string: "rystools://calendar")!) {
                     Group {
                         if !entry.signedIn {
-                            Text("Open Ry's Tools to sign in.")
+                            Text("Open LessMTP to sign in.")
                                 .font(Theme.Font.caption)
                                 .foregroundStyle(WidgetTheme.inkSoft)
                         } else if entry.events.isEmpty {
@@ -313,7 +313,7 @@ struct CalendarWidget: Widget {
                 .widgetURL(URL(string: "rystools://calendar"))
         }
         .configurationDisplayName("Upcoming")
-        .description("Shows your next events from Ry's Tools Calendar.")
+        .description("Shows your next events from LessMTP Calendar.")
         .supportedFamilies(supportedFamilies)
         // Without this, WidgetKit adds its own default content margins on top of the
         // padding already below — the two stacked is what was eating the left/right
