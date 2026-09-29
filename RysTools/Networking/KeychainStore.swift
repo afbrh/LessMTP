@@ -11,8 +11,8 @@ import Security
 // file is deliberately kept dependency-free (no UIApplication/ASWebAuthenticationSession)
 // so it's safe to compile into an APPLICATION_EXTENSION_API_ONLY target.
 enum KeychainStore {
-    private static let service = "com.afbrh.RysTools.google-session"
-    private static let accessGroup = "8G7VVSU6R2.com.afbrh.RysTools.shared"
+    private static let service = "com.afbrh.LessMTP.google-session"
+    private static let accessGroup = "8G7VVSU6R2.com.afbrh.LessMTP.shared"
 
     static func save(_ dict: [String: String]) {
         guard let data = try? JSONSerialization.data(withJSONObject: dict) else { return }

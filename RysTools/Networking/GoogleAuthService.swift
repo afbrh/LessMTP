@@ -21,7 +21,9 @@ final class GoogleAuthService: NSObject, ObservableObject {
     static let shared = GoogleAuthService()
 
     // iOS OAuth client created in Google Cloud Console (Credentials → Create Credentials
-    // → OAuth client ID → iOS) under bundle id com.afbrh.RysTools.
+    // → OAuth client ID → iOS) — its registered Bundle ID must match this app's own
+    // (com.afbrh.LessMTP), updated there by hand after this app was renamed from
+    // com.afbrh.RysTools; the Client ID itself didn't need to change.
     static let clientID = "575902569700-en5vd08bgjh9e17enalgrvr9t3jguulp.apps.googleusercontent.com"
     static var redirectScheme: String {
         "com.googleusercontent.apps." + clientID.replacingOccurrences(of: ".apps.googleusercontent.com", with: "")

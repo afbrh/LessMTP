@@ -4,11 +4,11 @@
 <dict>
 	<key>com.apple.security.application-groups</key>
 	<array>
-		<string>group.com.afbrh.RysTools</string>
+		<string>group.com.afbrh.LessMTP</string>
 	</array>
 	<key>keychain-access-groups</key>
 	<array>
-		<string>$(AppIdentifierPrefix)com.afbrh.RysTools.shared</string>
+		<string>$(AppIdentifierPrefix)com.afbrh.LessMTP.shared</string>
 	</array>
 </dict>
 </plist>

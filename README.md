@@ -14,7 +14,7 @@ web tools' "Web application" OAuth client — it needs its own **iOS** client.
    same project the web tools already use (Client ID starting
    `575902569700-...`).
 2. **Create Credentials → OAuth client ID → iOS**.
-3. **Bundle ID**: `com.afbrh.RysTools`
+3. **Bundle ID**: `com.afbrh.LessMTP`
 4. Click Create. Copy the new **Client ID** (looks like
    `123456789-abc123.apps.googleusercontent.com`).
 5. Open `RysTools/Networking/GoogleAuthService.swift` and replace
