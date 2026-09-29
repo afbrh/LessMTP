@@ -261,7 +261,7 @@ struct CalendarWidgetEntryView: View {
         return HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(timeOrDateLabel(event))
                 .font(.system(.caption2, design: .monospaced))
-                .foregroundStyle(.cyan)
+                .foregroundStyle(LightBoxTheme.gold)
             Text(event.title)
                 .font(Theme.Font.caption.weight(.semibold))
                 .foregroundStyle(textColor)

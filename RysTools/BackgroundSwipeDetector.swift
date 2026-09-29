@@ -42,9 +42,9 @@ extension View {
 // Instead, each swipeable row reports its own on-screen frame via
 // .swipeableCard(), RootView collects them into SwipeableCardFramesKey, and
 // this checks the touch's starting location against those exact rectangles —
-// so non-swipeable rows (Settings group cards, Scratch's "Add box" button, the
-// calendar month grid) are left alone and the background swipe still works
-// there, while it's excluded only where a card's own swipe needs the touch.
+// so non-swipeable content (e.g. the calendar month grid) is left alone and
+// the background swipe still works there, while it's excluded only where a
+// card's own swipe needs the touch.
 struct BackgroundSwipeDetector: UIViewRepresentable {
     var swipeableCardFrames: [CGRect]
     var onSwipe: (Bool) -> Void  // forward: Bool

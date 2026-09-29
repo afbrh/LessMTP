@@ -197,7 +197,7 @@ struct EmailView: View {
                         Text(senderDisplayName(for: message))
                             .font(Theme.Font.subheadline)
                             .fontWeight(message.isUnread ? .bold : .semibold)
-                            .foregroundStyle(LightBoxTheme.expense)
+                            .foregroundStyle(LightBoxTheme.gold)
                             .lineLimit(1)
                         HStack(spacing: 4) {
                             Text(message.subject)

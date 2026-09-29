@@ -609,7 +609,7 @@ struct CalendarView: View {
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         Text(timeLabel(event))
                             .font(.system(.footnote, design: .monospaced))
-                            .foregroundStyle(.cyan)
+                            .foregroundStyle(LightBoxTheme.gold)
                         Text(event.title)
                             .font(Theme.Font.subheadline.weight(.semibold))
                             .foregroundStyle(LightBoxTheme.ink)

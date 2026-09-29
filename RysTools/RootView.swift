@@ -14,7 +14,7 @@ enum Tool: String, CaseIterable, Identifiable {
         switch self {
         case .email: return "E-Mail"
         case .calendar: return "Calendar"
-        case .scratch: return "Notes"
+        case .scratch: return "Note"
         }
     }
 }
@@ -26,23 +26,21 @@ struct RootView: View {
     @State private var selectedTool: Tool = .email
     @State private var emailSearchText = ""
     // Calendar's matches event titles against everything already loaded for the
-    // month grid (see CalendarView.searchResultEvents); Notes' hides any box that
-    // doesn't contain the text (see ScratchView.filteredIndices).
+    // month grid (see CalendarView.searchResultEvents). Note has no search of its
+    // own — a single continuous block of text has nothing meaningful to filter.
     @State private var calendarSearchText = ""
-    @State private var notesSearchText = ""
     @State private var selectedFolder: MailFolder = .inbox
     @State private var isNavMenuOpen = false
     @State private var isSearchExpanded = false
     @FocusState private var isSearchFieldFocused: Bool
     @State private var composePrefill: ComposePrefill?
-    // Flipped true by the header's "+" button (see headerBar) when on Calendar/Notes,
-    // then immediately flipped back by the screen that's listening for it — same
-    // "+"-in-the-header spot Email's Compose button already used, now shared by all
-    // three tools instead of Calendar/Notes each having their own button in content.
+    // Flipped true by the header's "+" button (see headerBar) when on Calendar, then
+    // immediately flipped back by the screen that's listening for it — same
+    // "+"-in-the-header spot Email's Compose button already used. Note has no "+" of
+    // its own since there's only ever the one note.
     @State private var triggerCalendarCreate = false
-    @State private var triggerNotesAdd = false
     // Collected from every currently on-screen .swipeableCard() (email rows,
-    // calendar events, scratch boxes) — see BackgroundSwipeDetector.
+    // calendar events) — see BackgroundSwipeDetector.
     @State private var swipeableCardFrames: [CGRect] = []
 
     // The header floats over the content instead of sitting in its own row (it has its
@@ -115,17 +113,18 @@ struct RootView: View {
         switch selectedTool {
         case .email: EmailView(searchText: $emailSearchText, folder: $selectedFolder)
         case .calendar: CalendarView(triggerCreateEvent: $triggerCalendarCreate, searchText: $calendarSearchText)
-        case .scratch: ScratchView(triggerAddBox: $triggerNotesAdd, searchText: $notesSearchText)
+        case .scratch: ScratchView()
         }
     }
 
     // Each tool's own search text, kept separate so switching tools (or away and
-    // back) doesn't lose what you'd typed in another one.
+    // back) doesn't lose what you'd typed in another one. Note has none of its own
+    // (see headerBar, which hides the search icon entirely for it).
     private var currentSearchText: Binding<String> {
         switch selectedTool {
         case .email: return $emailSearchText
         case .calendar: return $calendarSearchText
-        case .scratch: return $notesSearchText
+        case .scratch: return .constant("")
         }
     }
 
@@ -133,14 +132,15 @@ struct RootView: View {
         switch selectedTool {
         case .email: return "Search mail"
         case .calendar: return "Search events"
-        case .scratch: return "Search notes"
+        case .scratch: return ""
         }
     }
 
     // One row, shown identically for every tool — the nav menu trigger always sits
-    // centered; search (expands in place of the row) and the "+" button (Email,
-    // signed in; Calendar/Notes always) are the only parts that ever come or go on
-    // either side of it, so the trigger never actually moves when switching tools.
+    // centered; search (Email/Calendar only, expands in place of the row) and the
+    // "+" button (Email, signed in; Calendar always; Note never) are the only parts
+    // that ever come or go on either side of it, so the trigger never actually
+    // moves when switching tools.
     private var headerBar: some View {
         HStack(spacing: 10) {
             if isSearchExpanded {
@@ -156,33 +156,38 @@ struct RootView: View {
                 .foregroundStyle(.white)
             } else {
                 // Just the icon by default — tapping expands it into the full search
-                // field, in place of the rest of this row.
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isSearchExpanded = true
-                        isSearchFieldFocused = true
+                // field, in place of the rest of this row. Note has no search of its
+                // own (see currentSearchText/searchPlaceholder), so this is hidden
+                // entirely there rather than expanding into a field that does nothing.
+                if selectedTool != .scratch {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isSearchExpanded = true
+                            isSearchFieldFocused = true
+                        }
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                            .font(Theme.Font.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(8)
+                            .background(Theme.darkGrey)
+                            .clipShape(Circle())
                     }
-                } label: {
-                    Image(systemName: "magnifyingglass")
-                        .font(Theme.Font.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .padding(8)
-                        .background(Theme.darkGrey)
-                        .clipShape(Circle())
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
 
                 Spacer(minLength: 0)
                 navMenuTrigger
                 Spacer(minLength: 0)
 
-                // One "+" button, in the same spot for every tool — Email's Compose,
-                // Calendar's Create Event, and Notes' Add box all used to be three
-                // separate buttons (Calendar/Notes each in their own content, below
-                // the header); now they're one button here that does whichever one
-                // applies to the current tool. Email's still hides when signed out
-                // (there's nothing to compose to); Calendar/Notes' never needed that.
-                if selectedTool != .email || auth.isSignedIn {
+                // One "+" button, in the same spot for every tool that has one —
+                // Email's Compose and Calendar's Create Event used to each be their
+                // own button (in their own content, below the header); now they're
+                // one button here that does whichever one applies to the current
+                // tool. Email's still hides when signed out (there's nothing to
+                // compose to). Note has no "+" at all — there's only ever the one
+                // note, nothing to add.
+                if selectedTool == .calendar || (selectedTool == .email && auth.isSignedIn) {
                     Button {
                         switch selectedTool {
                         case .email:
@@ -190,7 +195,7 @@ struct RootView: View {
                         case .calendar:
                             triggerCalendarCreate = true
                         case .scratch:
-                            triggerNotesAdd = true
+                            break
                         }
                     } label: {
                         Image(systemName: "plus")
@@ -267,15 +272,9 @@ struct RootView: View {
     private var navMenuLabel: String {
         switch selectedTool {
         case .email: return selectedFolder.label
-        case .calendar: return Self.todayLabel
+        case .calendar: return Tool.calendar.label
         case .scratch: return Tool.scratch.label
         }
-    }
-
-    private static var todayLabel: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "M/d"
-        return formatter.string(from: Date())
     }
 
     private var navMenuTrigger: some View {
@@ -297,43 +296,33 @@ struct RootView: View {
         .buttonStyle(.plain)
     }
 
-    // Fixed order per an explicit ask: Inbox, Calendar, Notes, Mail Archive, Sent
-    // Emails, Sign out — everywhere in the app you'd go is one tap from here now that
-    // there's no separate tool-switcher bar or Settings screen. Note this drops the
-    // "All" mail folder from the menu entirely (it wasn't in the requested order) —
-    // flagged in case that was an oversight rather than intentional.
+    // Fixed order per an explicit ask: Inbox, Calendar, Note, Archive, Sign out —
+    // everywhere in the app you'd go is one tap from here now that there's no
+    // separate tool-switcher bar or Settings screen. Note this drops the "All" mail
+    // folder from the menu entirely (it wasn't in the requested order) — flagged in
+    // case that was an oversight rather than intentional.
     private var navMenuPanel: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .center, spacing: 0) {
             dropdownRow(title: "Inbox", isSelected: selectedTool == .email && selectedFolder == .inbox) {
                 selectedFolder = .inbox
                 selectedTool = .email
                 isNavMenuOpen = false
             }
-            Divider().background(Theme.paperLine)
             dropdownRow(title: Tool.calendar.label, isSelected: selectedTool == .calendar) {
                 selectedTool = .calendar
                 isNavMenuOpen = false
             }
-            Divider().background(Theme.paperLine)
             dropdownRow(title: Tool.scratch.label, isSelected: selectedTool == .scratch) {
                 selectedTool = .scratch
                 isNavMenuOpen = false
             }
-            Divider().background(Theme.paperLine)
-            dropdownRow(title: "Mail Archive", isSelected: selectedTool == .email && selectedFolder == .archive) {
+            dropdownRow(title: "Archive", isSelected: selectedTool == .email && selectedFolder == .archive) {
                 selectedFolder = .archive
                 selectedTool = .email
                 isNavMenuOpen = false
             }
-            Divider().background(Theme.paperLine)
-            dropdownRow(title: "Sent Emails", isSelected: selectedTool == .email && selectedFolder == .sent) {
-                selectedFolder = .sent
-                selectedTool = .email
-                isNavMenuOpen = false
-            }
-            Divider().background(Theme.paperLine)
             if auth.isSignedIn, let email = auth.userEmail {
-                dropdownRow(title: "Sign out \(email)") {
+                dropdownRow(title: "Sign out \(email)", tintColor: Theme.expense) {
                     auth.signOut()
                     isNavMenuOpen = false
                 }
@@ -344,33 +333,37 @@ struct RootView: View {
                 }
             }
         }
-        .frame(minWidth: 220, alignment: .leading)
-        // The screen behind this is Theme.paper too (pure black in the app's forced
-        // dark mode), so a black panel here would be indistinguishable from it aside
-        // from its border — dark grey instead, same as the header's other controls, so
-        // it reads as a solid opaque panel rather than looking like it's see-through.
-        .background(Theme.darkGrey)
+        // Without this, the VStack expands to whatever width the enclosing
+        // full-screen overlay proposes (the whole screen) instead of hugging its
+        // own content — each row's own maxWidth: .infinity (see dropdownRow) then
+        // exists only to match the widest row, not to fill the screen.
+        .fixedSize(horizontal: true, vertical: false)
+        .frame(minWidth: 220, alignment: .center)
+        .background(Color.black)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Theme.darkGrey, lineWidth: 1)
+        )
         .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
     }
 
     private func dropdownRow(
         title: String,
         isSelected: Bool = false,
+        tintColor: Color = Theme.ink,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            HStack(spacing: 10) {
-                Text(title)
-                    .font(Theme.Font.subheadline.weight(isSelected ? .bold : .regular))
-                    .lineLimit(1)
-                Spacer(minLength: 8)
-            }
-            .foregroundStyle(Theme.ink)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
-            .background(isSelected ? Theme.goldBg : Color.clear)
-            .contentShape(Rectangle())
+            Text(title)
+                .font(Theme.Font.subheadline.weight(isSelected ? .bold : .regular))
+                .lineLimit(1)
+                .foregroundStyle(tintColor)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
+                .background(isSelected ? Theme.goldBg : Color.clear)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
