@@ -1,6 +1,20 @@
 import QuickLook
 import SwiftUI
 
+// Lets emailRow's unread dot (positioned outside the card, in the margin to its
+// left) line up its vertical center with the subject text's center specifically —
+// not the sender line above it, and not the card as a whole — without hand-measuring
+// font line heights.
+private struct SubjectLineAlignment: AlignmentID {
+    static func defaultValue(in context: ViewDimensions) -> CGFloat {
+        context[VerticalAlignment.center]
+    }
+}
+
+private extension VerticalAlignment {
+    static let subjectLine = VerticalAlignment(SubjectLineAlignment.self)
+}
+
 @MainActor
 final class EmailViewModel: ObservableObject {
     @Published var messages: [EmailMessage] = []
@@ -183,86 +197,90 @@ struct EmailView: View {
 
     private func emailRow(_ message: EmailMessage) -> some View {
         let isExpanded = expandedID == message.id
-        // Unread rows flip to a solid white card with black text so they stand out
-        // at a glance against the app's black theme; read rows keep the normal
-        // paper/ink styling.
-        let textColor: Color = message.isUnread ? .black : LightBoxTheme.ink
 
-        return VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: 8) {
-                Button {
-                    toggleExpanded(message)
-                } label: {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(senderDisplayName(for: message))
-                            .font(Theme.Font.subheadline)
-                            .fontWeight(message.isUnread ? .bold : .semibold)
-                            .foregroundStyle(LightBoxTheme.gold)
-                            .lineLimit(1)
-                        HStack(spacing: 4) {
-                            Text(message.subject)
+        // The dot sits outside the card entirely, in the blank margin to its left —
+        // .subjectLine is a shared custom alignment guide (see below) so its vertical
+        // center lines up exactly with the subject text's center, regardless of font
+        // metrics, without needing to hand-measure line heights.
+        return HStack(alignment: .subjectLine, spacing: 6) {
+            Circle()
+                .fill(message.isUnread ? LightBoxTheme.expense : Color.clear)
+                .frame(width: 8, height: 8)
+                .alignmentGuide(.subjectLine) { $0[VerticalAlignment.center] }
+
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .top, spacing: 8) {
+                    Button {
+                        toggleExpanded(message)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(senderDisplayName(for: message))
                                 .font(Theme.Font.subheadline)
-                                .fontWeight(message.isUnread ? .bold : .regular)
-                                .foregroundStyle(textColor)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(LightBoxTheme.ink)
                                 .lineLimit(1)
-                            if message.hasAttachment {
-                                Image(systemName: "paperclip")
-                                    .font(Theme.Font.caption2)
+                            HStack(spacing: 4) {
+                                Text(message.subject)
+                                    .font(Theme.Font.subheadline)
+                                    .fontWeight(.regular)
                                     .foregroundStyle(LightBoxTheme.inkSoft)
+                                    .lineLimit(1)
+                                    .alignmentGuide(.subjectLine) { $0[VerticalAlignment.center] }
+                                if message.hasAttachment {
+                                    Image(systemName: "paperclip")
+                                        .font(Theme.Font.caption2)
+                                        .foregroundStyle(LightBoxTheme.inkSoft)
+                                }
                             }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
+                    .buttonStyle(.plain)
 
-                VStack(alignment: .trailing, spacing: 4) {
-                    if let url = message.unsubscribeURL {
-                        Button {
-                            openURL(url)
-                        } label: {
-                            Text("Unsubscribe")
-                                .font(Theme.Font.caption2.weight(.semibold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(LightBoxTheme.expense)
-                                .clipShape(Capsule())
+                    VStack(alignment: .trailing, spacing: 4) {
+                        if let url = message.unsubscribeURL {
+                            Button {
+                                openURL(url)
+                            } label: {
+                                Text("Unsubscribe")
+                                    .font(Theme.Font.caption2.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(LightBoxTheme.expense)
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
-            }
 
-            if isExpanded {
-                expandedContent(isUnread: message.isUnread)
+                if isExpanded {
+                    expandedContent
+                }
             }
+            .padding(12)
+            .background(LightBoxTheme.paper)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
-        .padding(12)
-        .background(message.isUnread ? Color.white : LightBoxTheme.paper)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(message.isUnread ? LightBoxTheme.cardBorder : .clear, lineWidth: 1)
-        )
-        .padding(.horizontal, 16)
+        .padding(.leading, 10)
+        .padding(.trailing, 16)
         .padding(.vertical, 5)
     }
 
     @ViewBuilder
-    private func expandedContent(isUnread: Bool) -> some View {
-        let contentInk = isUnread ? Color.black : LightBoxTheme.ink
+    private var expandedContent: some View {
         if isLoadingDetail {
             ProgressView().padding(.vertical, 16)
         } else if let detailError {
-            Text(detailError).foregroundStyle(contentInk).padding(.top, 10)
+            Text(detailError).foregroundStyle(LightBoxTheme.ink).padding(.top, 10)
         } else if let thread = expandedThread {
-            threadContent(thread, contentInk: contentInk)
+            threadContent(thread)
         }
     }
 
-    private func attachmentRow(_ attachment: EmailAttachment, messageId: String, contentInk: Color) -> some View {
+    private func attachmentRow(_ attachment: EmailAttachment, messageId: String) -> some View {
         Button {
             Task { await openAttachment(attachment, messageId: messageId) }
         } label: {
@@ -279,9 +297,9 @@ struct EmailView: View {
                 Spacer(minLength: 8)
                 Text(formattedSize(attachment.size))
                     .font(Theme.Font.caption2)
-                    .foregroundStyle(contentInk)
+                    .foregroundStyle(LightBoxTheme.ink)
             }
-            .foregroundStyle(contentInk)
+            .foregroundStyle(LightBoxTheme.ink)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -318,11 +336,11 @@ struct EmailView: View {
     // A back-and-forth thread renders as chat bubbles instead — own messages on the
     // right, the other side's on the left — same as email.html's buildThreadContent,
     // instead of repeating the From/To header block once per message.
-    private func threadContent(_ messages: [EmailDetail], contentInk: Color) -> some View {
+    private func threadContent(_ messages: [EmailDetail]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(spacing: 10) {
                 ForEach(messages) { message in
-                    chatBubble(message, contentInk: contentInk)
+                    chatBubble(message)
                 }
             }
 
@@ -338,7 +356,7 @@ struct EmailView: View {
         .padding(.top, 10)
     }
 
-    private func chatBubble(_ message: EmailDetail, contentInk: Color) -> some View {
+    private func chatBubble(_ message: EmailDetail) -> some View {
         let mine = isMine(message)
         return VStack(alignment: mine ? .trailing : .leading, spacing: 4) {
             Text(mine ? shortDate(message) : "\(shortSenderName(message.from)), \(shortDate(message))")
@@ -346,7 +364,7 @@ struct EmailView: View {
                 .foregroundStyle(LightBoxTheme.gold)
             Text(expandedBodies[message.id] ?? AttributedString(message.bodyText))
                 .font(Theme.Font.subheadline)
-                .foregroundStyle(contentInk)
+                .foregroundStyle(LightBoxTheme.ink)
                 .padding(10)
                 .background(mine ? LightBoxTheme.gold : LightBoxTheme.paperLine)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -354,7 +372,7 @@ struct EmailView: View {
             if !message.attachments.isEmpty {
                 VStack(alignment: mine ? .trailing : .leading, spacing: 6) {
                     ForEach(message.attachments) { attachment in
-                        attachmentRow(attachment, messageId: message.id, contentInk: contentInk)
+                        attachmentRow(attachment, messageId: message.id)
                     }
                 }
             }
