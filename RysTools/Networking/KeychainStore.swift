@@ -5,11 +5,10 @@ import Security
 // access token is short-lived and sensitive, so this belongs in the Keychain, not
 // UserDefaults. One entry, holding accessToken/refreshToken/expiresAt as JSON.
 //
-// Shared with the CalendarWidgetExtension target via a Keychain Sharing access group
-// (see both targets' .entitlements files) — the widget runs in its own process, so it
-// needs this same access group to read the session the main app signed in with. This
-// file is deliberately kept dependency-free (no UIApplication/ASWebAuthenticationSession)
-// so it's safe to compile into an APPLICATION_EXTENSION_API_ONLY target.
+// Still scoped to a named Keychain Sharing access group (see RysTools.entitlements) —
+// a leftover from when this was also shared with the now-removed CalendarWidgetExtension
+// target, left as-is rather than migrated to avoid silently signing out anyone with an
+// existing session stored under it.
 enum KeychainStore {
     private static let service = "com.afbrh.LessMTP.google-session"
     private static let accessGroup = "8G7VVSU6R2.com.afbrh.LessMTP.shared"

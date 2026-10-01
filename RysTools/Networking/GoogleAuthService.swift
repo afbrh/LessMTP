@@ -29,16 +29,12 @@ final class GoogleAuthService: NSObject, ObservableObject {
         "com.googleusercontent.apps." + clientID.replacingOccurrences(of: ".apps.googleusercontent.com", with: "")
     }
 
-    // Broader than the web app's drive.file scope, deliberately: drive.file only ever
-    // sees files THIS OAuth client created, so a brand-new iOS client couldn't see the
-    // munny-data.json file the web app already created under its own (different) client.
-    // Full "drive" access lets this app find and read/write that exact same file, so
-    // budget/scratch data shows up here for real instead of starting from empty.
+    // Purely an email app now — Calendar and Note (which needed Drive, for its
+    // shared munny-data.json file) were removed entirely, so their scopes
+    // (calendar.events, drive) went with them.
     static let scope = [
-        "https://www.googleapis.com/auth/drive",
         "https://www.googleapis.com/auth/userinfo.email",
         "https://www.googleapis.com/auth/gmail.readonly",
-        "https://www.googleapis.com/auth/calendar.events",
         // For resolving a sender's name in the mail list from Google's own Contacts —
         // both real saved contacts (.contacts.readonly) and Gmail's own auto-collected
         // "Other contacts" (.contacts.other.readonly, people you've emailed but never

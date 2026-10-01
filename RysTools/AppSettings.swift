@@ -31,8 +31,8 @@ enum AppFontChoice: String, CaseIterable, Identifiable {
     }
 }
 
-// The color of every "card" (Email messages, Calendar day cells/events, Scratch
-// boxes) — what LightBoxTheme.paper actually resolves to. Beige is the original,
+// The color of every "card" (each email row) — what LightBoxTheme.paper actually
+// resolves to. Beige is the original,
 // long-standing look and stays the default; the other three are plain, deliberately
 // simple choices rather than a full palette.
 enum AppCardColor: String, CaseIterable, Identifiable {
@@ -68,13 +68,12 @@ enum AppCardColor: String, CaseIterable, Identifiable {
 }
 
 // One shared instance (not per-view state), read by Theme.Font/LightBoxTheme
-// throughout the app and the widget. font/cardColor used to be user-editable (a
-// Settings screen, persisted per-device, synced to the widget via the shared App
-// Group suite) — per an explicit ask to drop that editing UI entirely, they're now
-// just fixed values: System font, Black cards. Still an ObservableObject (rather
-// than a plain enum/static values) purely so every existing `@EnvironmentObject var
-// appSettings: AppSettings` across the app keeps compiling unchanged; nothing ever
-// publishes a change to these any more.
+// throughout the app. font/cardColor used to be user-editable (a Settings screen,
+// persisted per-device) — per an explicit ask to drop that editing UI entirely,
+// they're now just fixed values: System font, Black cards. Still an ObservableObject
+// (rather than a plain enum/static values) purely so every existing
+// `@EnvironmentObject var appSettings: AppSettings` across the app keeps compiling
+// unchanged; nothing ever publishes a change to these any more.
 @MainActor
 final class AppSettings: ObservableObject {
     static let shared = AppSettings()

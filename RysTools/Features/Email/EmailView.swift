@@ -91,9 +91,6 @@ struct EmailView: View {
                 } else {
                     ForEach(viewModel.messages) { message in
                         emailRow(message)
-                            // Reports this row's frame to BackgroundSwipeDetector, so a
-                            // swipe here reveals archive/mark-read instead of switching tools.
-                            .swipeableCard()
                             .listRowInsets(EdgeInsets())
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)

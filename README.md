@@ -1,18 +1,16 @@
-# LessMTP — native iOS proof of concept
+# LessMTP — native iOS Gmail client
 
-A native SwiftUI shell around the same Google account data the web tools
-(`budget.html`, `email.html`, `cal.html`, `scratch.html` at rys.tools) already use —
-same Drive file, same Gmail inbox, same Calendar. This is a first pass, not a full
-port: see "What's scoped down" below.
+A native SwiftUI Gmail client, signed in with your own Google account via OAuth.
+Purely an email app — inbox/archive, read, reply (inline, chat-bubble style for a
+back-and-forth thread), forward, compose, archive/unarchive, mark read/unread,
+search, and attachments (download + QuickLook preview).
 
 ## One-time setup: Google Sign-In
 
-Google blocks OAuth inside a plain embedded web view, so this app can't reuse the
-web tools' "Web application" OAuth client — it needs its own **iOS** client.
+Google blocks OAuth inside a plain embedded web view, so this app needs its own
+**iOS** OAuth client (a "Web application" client won't work here).
 
-1. Go to [Google Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials),
-   same project the web tools already use (Client ID starting
-   `575902569700-...`).
+1. Go to [Google Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials).
 2. **Create Credentials → OAuth client ID → iOS**.
 3. **Bundle ID**: `com.afbrh.LessMTP`
 4. Click Create. Copy the new **Client ID** (looks like
@@ -24,12 +22,15 @@ web tools' "Web application" OAuth client — it needs its own **iOS** client.
    before `.apps.googleusercontent.com`. Example: if your Client ID is
    `123456789-abc123.apps.googleusercontent.com`, the URL scheme becomes
    `com.googleusercontent.apps.123456789-abc123`.
-7. This app requests the full `drive` scope (not the web app's narrower
-   `drive.file`) specifically so it can find and read the *same*
-   `munny-data.json` file the web tools already created — `drive.file` scope is
-   siloed per OAuth client, so a brand-new iOS client wouldn't otherwise see it.
-   If prompted, make sure your Google account is added as a test user on this
-   OAuth consent screen (same place the web app's Testing-mode users are listed).
+7. Make sure your Google account is added as a test user on this OAuth consent
+   screen, if it's still in Testing mode.
+
+The scopes requested are `userinfo.email`, `gmail.readonly` (mail itself is
+read/written through the Gmail API's send/modify endpoints, which this readonly
+scope's *label* undersells — see GoogleAuthService's own scope list if that ever
+needs auditing), and `contacts.readonly`/`contacts.other.readonly` (so a sender's
+name in the list matches whatever Gmail itself already shows, sourced from your
+real Google Contacts).
 
 ## Running it
 
@@ -41,22 +42,3 @@ trust your Apple ID's developer certificate on the phone the first time
 no paid Developer Program needed, but the app will need re-installing from Xcode
 about once a week unless you enroll in the paid program (which issues certs that
 last a year).
-
-## What's scoped down (first pass)
-
-- **Budget**: read-only. Shows each scenario as its own card (Income once at the
-  top implicitly via Net, then each locked category + custom row, then Net) —
-  no add/remove/clone/rename from the app yet.
-- **Email**: inbox list + tap to read full message body. No compose, reply,
-  archive, search, or swipe actions yet.
-- **Calendar**: the "Upcoming" agenda list only — no month grid, no creating or
-  editing events.
-- **Scratch**: same boxes, same underlying text format (still saved joined by
-  three newlines, so it stays compatible with scratch.html) — editing/adding a
-  box works, but the "type three blank lines to split" and "Backspace at the top
-  to merge" gestures from the web version aren't replicated; there's a plain
-  "+ Add box" button instead.
-
-All four read the *same* Drive file, Gmail inbox, and Calendar the web tools use,
-so real data should show up — this was about proving that round-trip and the
-overall feel as a native app, not full feature parity yet.

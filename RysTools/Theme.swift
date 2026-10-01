@@ -1,8 +1,8 @@
 import SwiftUI
 
-// Mirrors the CSS custom properties in budget.html/email.html/cal.html/scratch.html
-// (--paper, --ink, --gold, etc.), light and dark, so the native app reads as the same
-// app rather than a from-scratch design.
+// Mirrors the CSS custom properties in email.html (--paper, --ink, --gold, etc.),
+// light and dark, so the native app reads as the same app rather than a from-scratch
+// design.
 enum Theme {
     static func dynamic(light: String, dark: String) -> Color {
         Color(uiColor: UIColor { trait in
@@ -29,19 +29,18 @@ enum Theme {
     // search field, and compose button — a deliberately different fill from the
     // screen's own pure-black background so those controls read as buttons.
     static let darkGrey = fixed("#2A2A2A")
-    // Fixed solid green fill for "primary create" actions (Calendar's Create Event,
-    // Email's Compose) — a deliberately different, more saturated accent from the
-    // muted income green above, so it reads as a button rather than a status color.
+    // Fixed solid green fill for Email's Compose button — a deliberately different,
+    // more saturated accent from the muted income green above, so it reads as a
+    // button rather than a status color.
     static let green = fixed("#2E8B57")
 }
 
 // Everywhere else in the app now always uses Theme's dark palette (see
 // RysToolsApp's forced .preferredColorScheme(.dark) — light mode is gone). Email's
-// message boxes and Calendar's day squares/event cards are the deliberate exception:
-// they keep their own fixed "card" look — independent of system appearance — driven
-// by AppSettings.shared.cardColor (fixed to .black — this used to be user-editable
-// via a Settings screen that's since been removed entirely). `paper` is that chosen
-// color; `ink`/`inkSoft`/
+// message rows are the deliberate exception: they keep their own fixed "card" look —
+// independent of system appearance — driven by AppSettings.shared.cardColor (fixed
+// to .black — this used to be user-editable via a Settings screen that's since been
+// removed entirely). `paper` is that chosen color; `ink`/`inkSoft`/
 // `paperLine` flip to white-based tones automatically on a dark card (black, dark
 // grey) so text stays legible, rather than staying pinned to black and going
 // unreadable on a black card. `gold`/`expense`/`info` stay fixed accent colors, same
@@ -51,9 +50,7 @@ enum Theme {
 // to the screen's own near-black/pure-black chrome with little to no contrast
 // otherwise, so they get a faint outline (`cardBorder`) just to stay visible as their
 // own shape at all.
-// @MainActor because AppCardColor comes from AppSettings.shared, a @MainActor type
-// (this file also compiles into the widget extension target, where that isolation
-// must be explicit).
+// @MainActor because AppCardColor comes from AppSettings.shared, a @MainActor type.
 @MainActor
 enum LightBoxTheme {
     static var paper: Color { AppSettings.shared.cardColor.paper }
@@ -61,10 +58,10 @@ enum LightBoxTheme {
     static var inkSoft: Color { ink.opacity(0.55) }
     static var paperLine: Color { ink.opacity(0.25) }
     static var cardBorder: Color { AppSettings.shared.cardColor.needsLightInk ? Color.white.opacity(0.18) : .clear }
-    // Email timestamps, chat-bubble accents, the Reply button, Calendar's dots/today
-    // marker, checkmarks, etc. all use this — same reasoning as `expense` below: the
-    // darker gold was tuned for a light card and reads as low-contrast on a dark one,
-    // so dark cards get the same lighter gold Theme's own dark-mode chrome already uses.
+    // Email timestamps, chat-bubble accents, the Reply button, etc. all use this —
+    // same reasoning as `expense` below: the darker gold was tuned for a light card
+    // and reads as low-contrast on a dark one, so dark cards get the same lighter
+    // gold Theme's own dark-mode chrome already uses.
     static var gold: Color {
         AppSettings.shared.cardColor.needsLightInk ? Theme.fixed("#D9B25E") : Theme.fixed("#8A6423")
     }
